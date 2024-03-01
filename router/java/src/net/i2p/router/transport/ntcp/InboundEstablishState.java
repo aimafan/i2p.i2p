@@ -273,6 +273,7 @@ class InboundEstablishState extends EstablishBase implements NTCP2Payload.Payloa
      *  @since 0.9.36
      */
     private synchronized void receiveInboundNTCP2(ByteBuffer src) {
+        
         if (_state == State.IB_NTCP2_INIT && src.hasRemaining()) {
             // use _X for the buffer
             int toGet = Math.min(src.remaining(), MSG1_SIZE - _received);
@@ -288,6 +289,7 @@ class InboundEstablishState extends EstablishBase implements NTCP2Payload.Payloa
             _received = 0;
             // replay check using encrypted key
             if (!_transport.isHXHIValid(_X)) {
+                // Appendtofile.write("replay msg 1 + " + _con.toString()); // 1.1
                 _context.statManager().addRateData("ntcp.replayHXxorBIH", 1);
                 fail("Replay msg 1, eX = " + Base64.encode(_X, 0, KEY_SIZE));
                 return;
@@ -299,6 +301,7 @@ class InboundEstablishState extends EstablishBase implements NTCP2Payload.Payloa
             System.arraycopy(_X, KEY_SIZE - IV_SIZE, _prevEncrypted, 0, IV_SIZE);
             _context.aes().decrypt(_X, 0, _X, 0, bobHash, _transport.getNTCP2StaticIV(), KEY_SIZE);
             if (DataHelper.eqCT(_X, 0, ZEROKEY, 0, KEY_SIZE)) {
+                // Appendtofile.write("bad msg 1 + " + _con.toString()); // 1.1
                 fail("Bad msg 1, X = 0");
                 return;
             }

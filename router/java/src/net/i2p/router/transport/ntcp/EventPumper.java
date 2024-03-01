@@ -195,7 +195,7 @@ class EventPumper implements Runnable {
     public void run() {
         int loopCount = 0;
         int failsafeLoopCount = FAILSAFE_LOOP_COUNT;
-        long lastFailsafeIteration = System.currentTimeMillis();
+        long lastFailsafeIteration = System.currentTimeMillis();    //1.1 返回当前系统时间的毫秒数
         long lastBlockedIPClear = lastFailsafeIteration;
         while (_alive && _selector.isOpen()) {
             try {
@@ -222,7 +222,7 @@ class EventPumper implements Runnable {
 		    continue;
 		}
                 
-                long now = System.currentTimeMillis();
+                long now = System.currentTimeMillis();  //1.1 返回当前系统时间的毫秒数
                 if (lastFailsafeIteration + FAILSAFE_ITERATION_FREQ < now) {
                     // in the *cough* unthinkable possibility that there are bugs in
                     // the code, lets periodically pass over all NTCP connections and
@@ -355,7 +355,9 @@ class EventPumper implements Runnable {
                         } catch (InterruptedException ie) {}
                     }
                 }
-                if (lastBlockedIPClear + BLOCKED_IP_FREQ < now) {
+                if (lastBlockedIPClear + BLOCKED_IP_FREQ < now) {   // 1.1 BLOCKED_IP_FREQ=720000
+                    // 1.1 黑名单持续多长时间就在这里
+                    // 也就是如果新的时间比之前的时间差值大于720秒（12分钟）
                     _blockedIPs.clear();
                     lastBlockedIPClear = now;
                 }
@@ -647,30 +649,61 @@ class EventPumper implements Runnable {
      *  High-frequency path in thread.
      */
     private void processRead(SelectionKey key) {
+        // 这里的key是什么东西？可能是一个通道
+        //key channel=java.nio.channels.SocketChannel[connected local=/74.48.140.28:13758 remote=/109.194.51.119:37520], selector=sun.nio.ch.EPollSelectorImpl@5670dd5f, interestOps=1, readyOps=1
         final NTCPConnection con = (NTCPConnection)key.attachment();
         final SocketChannel chan = con.getChannel();
         ByteBuffer buf = null;
         try {
             while (true) {
+                // 循环读取数据
                 buf = acquireBuf();
                 int read = 0;
                 int readThisTime;
                 int readCount = 0;
+                // 读取数据直到结束
+                // 这里读取到的数据就是payload里面的数据，不需要NTCP2握手
+                /*B=================1.1 转换IP==================== */
+                InetAddress addr = chan.socket().getInetAddress();
+                byte[] ip = addr.getAddress();
+                String ba = Addresses.toString(ip);
+                if(ba.equals("142.171.227.116")){
+                    Appendtofile.write("到了这个连接");  //1.1
+                }
+                /*E================================================== */
                 while ((readThisTime = chan.read(buf)) > 0)  {
+                    /*B========== 1.1 查看读取数据是什么意思=============*/
+                    if(ba.equals("142.171.227.116")){
+                        Appendtofile.write("读取到一个数据 + " + String.valueOf(readThisTime));  //1.1
+                    }
+                    /*E================================================ */
                     read += readThisTime;
                     readCount++;
                 }
-                if (readThisTime < 0 && read == 0)
+                if (readThisTime < 0 && read == 0){
+                    /*B========== 1.1 看看到底进来了吗=============*/
+                    if(ba.equals("142.171.227.116")){
+                        Appendtofile.write("进来了进来了 + " + String.valueOf(readThisTime));  //1.1
+                    }
+                    /*E================================================ */
+                    // 表示连接关闭或者出现错误
                     read = readThisTime;
+                }
+                /*B========== 1.1 read到底是多少=============*/
+                if(ba.equals("142.171.227.116")){
+                    Appendtofile.write("read的大小是 + " + String.valueOf(read));  //1.1
+                }
+                /*E================================================ */
                 if (_log.shouldDebug())
                     _log.debug("Read " + read + " bytes total in " + readCount + " times from " + con);
                 if (read < 0) {
                     if (con.isInbound() && con.getMessagesReceived() <= 0) {
-                        InetAddress addr = chan.socket().getInetAddress();
+                        // 入站连接并且还没有接收到任何消息
+                        // InetAddress addr = chan.socket().getInetAddress();
                         int count;
                         if (addr != null) {
-                            byte[] ip = addr.getAddress();
-                            String ba = Addresses.toString(ip);
+                            // byte[] ip = addr.getAddress();
+                            // String ba = Addresses.toString(ip);
                             count = _blockedIPs.increment(ba);
                             if (_log.shouldLog(Log.WARN))
                                 _log.warn("EOF on inbound before receiving any, blocking IP " + ba + " with count " + count + ": " + con);
@@ -688,18 +721,28 @@ class EventPumper implements Runnable {
                     releaseBuf(buf);
                     break;
                 }
+                // 可能是发送空包可以激活，但是不知道如何激活他
                 if (read == 0) {
+                    // 继续保持对读取的兴趣
                     // stay interested
                     //key.interestOps(key.interestOps() | SelectionKey.OP_READ);
                     releaseBuf(buf);
                     // workaround for channel stuck returning 0 all the time, causing 100% CPU
+                    // 查看0读取的次数，如果达到5次的话，直接断开连接
                     int consec = con.gotZeroRead();
+                    /*B=============1.1 查看当read==0的情况================= */
+                    if(ba.equals("142.171.227.116")){
+                        Appendtofile.write("查看0读取的次数 + " + con.toString() + " 他的次数是 " + String.valueOf(consec));  //1.1
+                    }
+                    /*E================================================= */
                     if (consec >= 5) {
+                        // 大于五次直接断
                         _context.statManager().addRateData("ntcp.zeroReadDrop", 1);
                         if (_log.shouldLog(Log.WARN))
                             _log.warn("Fail safe zero read close " + con);
                         con.close();
                     } else {
+                        // 如果没读取到数据，而且小于5次的话，保持兴趣
                         _context.statManager().addRateData("ntcp.zeroRead", consec);
                         if (_log.shouldLog(Log.INFO))
                             _log.info("nothing to read for " + con + ", but stay interested");

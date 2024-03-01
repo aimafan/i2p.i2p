@@ -63,3 +63,18 @@ sloccount.sc
 apps/routerconsole/jsp/favicon.ico
 .tx
 /*.sh
+
+
+# by aimafan
+*.log
+i2prouter
+i2psnark.config
+i2psvc
+eepget
+clients.config
+blocklist.txt
+i2ptunnel.config
+libjbigi.so*
+libjcpuid.so*
+wrapper.config
+hosts.txt

@@ -59,6 +59,7 @@ class Reader {
     public void wantsRead(NTCPConnection con) {
         boolean already = false;
         synchronized (_pendingConnections) {
+            // 1.1 已经建立连接之后，后面的连接会直接断掉
             if (_liveReads.contains(con)) {
                 _readAfterLive.add(con);
                 already = true;
@@ -149,15 +150,21 @@ class Reader {
     private void processRead(NTCPConnection con) {
         ByteBuffer buf = null;
         while(true) {
+            // 1.1 说明如果加入黑名单的话，这个函数就没办法进入
             synchronized(con) {
-                if (con.isClosed())
+                if (con.isClosed()){
                     return;
-                if (con.isEstablished())
+                }
+                if (con.isEstablished()){
                     break;
+                }
             }
             if ((buf = con.getNextReadBuf()) == null)
                 return;
             EstablishState est = con.getEstablishState();
+
+            // 1.1 说明如果加入黑名单的话，就进不来了
+            // Appendtofile.write("进入ProcessRead + " + con.toString());  // 1.1
             
             if (est.isComplete()) {
                 // why is it complete yet !con.isEstablished?

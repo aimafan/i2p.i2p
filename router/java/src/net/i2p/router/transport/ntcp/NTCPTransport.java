@@ -1112,6 +1112,7 @@ public class NTCPTransport extends TransportImpl {
                     stopWaitAndRestart();
                 }
                 if (!TransportUtil.isValidPort(port))
+                    // i2p结点的port必须大于1024
                     _log.error("Specified NTCP port is " + port + ", ports lower than 1024 not recommended");
                 ServerSocketChannel chan = ServerSocketChannel.open();
                 chan.configureBlocking(false);
